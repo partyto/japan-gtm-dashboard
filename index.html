@@ -270,18 +270,7 @@ body {
   z-index: 5;
   opacity: 0.8;
 }
-.gantt-today::after {
-  content: '오늘';
-  position: absolute;
-  top: -20px;
-  left: -14px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--red);
-  background: var(--red-light);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
+/* today label is rendered once in the header via JS */
 .gantt-category-row {
   display: flex;
   align-items: center;
@@ -837,23 +826,29 @@ function renderGantt() {
     return;
   }
 
-  // Calculate date range
+  // Date range from dated items only
   const allDates = dated.flatMap(d => [new Date(d.startDate), new Date(d.endDate)]);
   let minDate = new Date(Math.min(...allDates));
   let maxDate = new Date(Math.max(...allDates));
-  minDate.setDate(1); // Start of month
-  maxDate.setMonth(maxDate.getMonth() + 1, 0); // End of month
+  minDate.setDate(1);
+  maxDate.setMonth(maxDate.getMonth() + 1, 0);
 
   const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  // Build month headers
+  // Today line position (%)
+  const todayPos = Math.max(0, Math.min(100, ((today - minDate) / (1000 * 60 * 60 * 24)) / totalDays * 100));
+
+  // Month headers
   const months = [];
   let d = new Date(minDate);
   while (d <= maxDate) {
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const daysInRange = Math.min((monthEnd - d) / (1000 * 60 * 60 * 24) + 1,
-                                 (maxDate - d) / (1000 * 60 * 60 * 24) + 1);
+    const daysInRange = Math.min(
+      (monthEnd - d) / (1000 * 60 * 60 * 24) + 1,
+      (maxDate - d) / (1000 * 60 * 60 * 24) + 1
+    );
     months.push({
       label: `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}`,
       days: daysInRange,
@@ -861,53 +856,71 @@ function renderGantt() {
     d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   }
 
+  // Header — "오늘" 레이블은 여기 한 번만 렌더링
   let html = `<div class="gantt-header">
     <div class="gantt-label-col">태스크</div>
-    <div class="gantt-timeline">
+    <div class="gantt-timeline" style="position:relative;">
       ${months.map(m => `<div class="gantt-month" style="flex:${m.days}">${m.label}</div>`).join('')}
+      <div style="position:absolute;top:0;bottom:-6px;left:${todayPos}%;width:2px;background:var(--red);opacity:0.8;z-index:5;pointer-events:none;">
+        <span style="position:absolute;top:0;left:4px;font-size:10px;font-weight:700;color:var(--red);background:var(--red-light);padding:1px 5px;border-radius:4px;white-space:nowrap;">오늘</span>
+      </div>
     </div>
   </div>`;
 
-  // Today line position
-  const todayPos = Math.max(0, Math.min(100, ((today - minDate) / (1000 * 60 * 60 * 24)) / totalDays * 100));
-
-  // Group by category
-  const categories = [...new Set(allData.map(d => d.category))];
+  // Group by category — ALL items, not just dated
+  const categories = [...new Set(allData.map(d => d.category).filter(Boolean))];
   categories.forEach(cat => {
-    const catItems = dated.filter(d => d.category === cat);
+    const catItems = allData.filter(d => d.category === cat);
     if (!catItems.length) return;
 
+    // Category row — vertical line, no label
     html += `<div class="gantt-category-row">
       <div class="gantt-category-label">${cat}</div>
-      <div style="flex:1; position:relative;">
+      <div style="flex:1;position:relative;">
         <div class="gantt-today" style="left:${todayPos}%"></div>
       </div>
     </div>`;
 
     catItems.forEach(item => {
-      const start = new Date(item.startDate);
-      const end = new Date(item.endDate);
-      const left = ((start - minDate) / (1000 * 60 * 60 * 24)) / totalDays * 100;
-      const width = ((end - start) / (1000 * 60 * 60 * 24) + 1) / totalDays * 100;
-      const catColor = CATEGORY_COLORS[cat] || 'var(--accent)';
-      const statusColor = STATUS_COLORS[item.status] || 'var(--text-secondary)';
-      const isOverdue = end < today && item.status !== '완료';
+      const hasDates = item.startDate && item.endDate;
 
-      html += `<div class="gantt-row">
-        <div class="gantt-row-label">
-          <span class="wbs-num">${item.wbs}</span>
-          <span style="overflow:hidden; text-overflow:ellipsis;">${item.subTask || item.task}</span>
-        </div>
-        <div class="gantt-row-timeline">
-          <div class="gantt-today" style="left:${todayPos}%"></div>
-          <div class="gantt-bar" style="left:${left}%; width:${Math.max(width, 0.5)}%; background:${isOverdue ? 'var(--red)' : catColor};"
-               onmouseenter="showTooltip(event, ${JSON.stringify(item).replace(/"/g, '&quot;')})"
-               onmouseleave="hideTooltip()">
-            <div class="progress-fill" style="width:${item.progress}%"></div>
-            ${width > 3 ? (item.subTask || item.task) : ''}
+      if (hasDates) {
+        const start = new Date(item.startDate);
+        const end   = new Date(item.endDate);
+        const left  = ((start - minDate) / (1000 * 60 * 60 * 24)) / totalDays * 100;
+        const width = ((end - start) / (1000 * 60 * 60 * 24) + 1) / totalDays * 100;
+        const catColor  = CATEGORY_COLORS[cat] || 'var(--accent)';
+        const isOverdue = end < today && item.status !== '완료';
+
+        html += `<div class="gantt-row">
+          <div class="gantt-row-label">
+            <span class="wbs-num">${item.wbs}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;">${item.subTask || item.task}</span>
           </div>
-        </div>
-      </div>`;
+          <div class="gantt-row-timeline">
+            <div class="gantt-today" style="left:${todayPos}%"></div>
+            <div class="gantt-bar"
+                 style="left:${left}%;width:${Math.max(width,0.5)}%;background:${isOverdue ? 'var(--red)' : catColor};"
+                 onmouseenter="showTooltip(event,${JSON.stringify(item).replace(/"/g,'&quot;')})"
+                 onmouseleave="hideTooltip()">
+              <div class="progress-fill" style="width:${item.progress}%"></div>
+              ${width > 4 ? (item.subTask || item.task) : ''}
+            </div>
+          </div>
+        </div>`;
+      } else {
+        // 날짜 없는 항목 — 빈 행으로 표시
+        html += `<div class="gantt-row">
+          <div class="gantt-row-label" style="color:var(--text-secondary);">
+            <span class="wbs-num">${item.wbs}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;">${item.subTask || item.task}</span>
+          </div>
+          <div class="gantt-row-timeline" style="display:flex;align-items:center;padding-left:10px;">
+            <div class="gantt-today" style="left:${todayPos}%"></div>
+            <span style="font-size:11px;color:var(--text-muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;">일정 미입력</span>
+          </div>
+        </div>`;
+      }
     });
   });
 
