@@ -522,9 +522,12 @@ tbody tr:hover td { background: var(--accent-light); }
   <!-- Settings -->
   <div class="settings-panel" id="settingsPanel">
     <div class="section-title">데이터 소스 설정</div>
-    <label>구글 스프레드시트 URL</label>
+    <label>데이터 URL (CSV 게시 링크)</label>
     <input type="text" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit  또는  .../pub?output=csv">
     <div class="hint">일반 편집 URL(…/edit)을 붙여넣어도 자동으로 CSV URL로 변환됩니다. 단, 시트는 반드시 <b>파일 → 공유 및 내보내기 → 웹에 게시 → CSV</b>로 게시되어 있어야 합니다.</div>
+    <label>스프레드시트 바로가기 링크</label>
+    <input type="text" id="sheetEditUrl" placeholder="https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit?usp=sharing">
+    <div class="hint">헤더의 "스프레드시트" 버튼이 이 링크로 연결됩니다.</div>
     <label>또는 로컬 CSV 파일 경로</label>
     <input type="text" id="localCsv" value="sample-data.csv" placeholder="sample-data.csv">
     <div style="display:flex; gap:8px;">
@@ -575,8 +578,9 @@ tbody tr:hover td { background: var(--accent-light); }
 <script>
 // ============ CONFIG ============
 const CONFIG = {
-  sheetUrl: localStorage.getItem('wbs_sheet_url') || '',
-  localCsv: localStorage.getItem('wbs_local_csv') || 'sample-data.csv',
+  sheetUrl:     localStorage.getItem('wbs_sheet_url') || '',
+  sheetEditUrl: localStorage.getItem('wbs_sheet_edit_url') || '',
+  localCsv:     localStorage.getItem('wbs_local_csv') || 'sample-data.csv',
 };
 
 const STATUS_COLORS = {
@@ -1051,14 +1055,17 @@ function hideTooltip() {
 function toggleSettings() {
   document.getElementById('settingsPanel').classList.toggle('active');
   document.getElementById('sheetUrl').value = CONFIG.sheetUrl;
+  document.getElementById('sheetEditUrl').value = CONFIG.sheetEditUrl;
   document.getElementById('localCsv').value = CONFIG.localCsv;
 }
 
 function saveSettings() {
   const rawUrl = document.getElementById('sheetUrl').value.trim();
   CONFIG.sheetUrl = normalizeSheetUrl(rawUrl);
+  CONFIG.sheetEditUrl = document.getElementById('sheetEditUrl').value.trim();
   CONFIG.localCsv = document.getElementById('localCsv').value.trim();
   localStorage.setItem('wbs_sheet_url', CONFIG.sheetUrl);
+  localStorage.setItem('wbs_sheet_edit_url', CONFIG.sheetEditUrl);
   localStorage.setItem('wbs_local_csv', CONFIG.localCsv);
   updateSheetLink();
   toggleSettings();
@@ -1071,11 +1078,9 @@ function refreshData() {
 
 function updateSheetLink() {
   const link = document.getElementById('sheetLink');
-  const url = CONFIG.sheetUrl;
-  if (!url) { link.style.display = 'none'; return; }
-  const match = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) {
-    link.href = `https://docs.google.com/spreadsheets/d/${match[1]}/edit`;
+  const editUrl = CONFIG.sheetEditUrl;
+  if (editUrl) {
+    link.href = editUrl;
     link.style.display = 'inline-flex';
     link.style.alignItems = 'center';
   } else {
